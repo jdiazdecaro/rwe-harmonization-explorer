@@ -3,7 +3,7 @@
 
 > **Prototype** — An interactive dashboard mapping key RWE definitions and regulatory positions across 12 national regulatory agencies. Data sourced from the [Duke-Margolis Institute for Health Policy's International Harmonization of Real-World Evidence Standards Dashboard](https://healthpolicy.duke.edu/projects/international-harmonization-real-world-evidence-standards-dashboard).
 
-🔗 **[Live Demo →](https://jdiaz-decaro.github.io/rwe-harmonization-explorer/)**
+🔗 **[Live Demo →](https://jdiazdecaro.github.io/rwe-harmonization-explorer/)**
 
 ---
 
