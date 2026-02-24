@@ -1,11 +1,11 @@
 # Regulatory Harmonization Explorer
 ### Interactive Visualization of International Regulatory Real-World Evidence Standards
 
-> **Prototype** — An interactive dashboard mapping key RWE definitions and regulatory positions across 12 national regulatory agencies. Data sourced from the [Duke-Margolis Institute for Health Policy's International Harmonization of Real-World Evidence Standards Dashboard](https://healthpolicy.duke.edu/projects/international-harmonization-real-world-evidence-standards-dashboard).
+> **Prototype** — An interactive dashboard mapping key RWE definitions and regulatory positions across 12 national regulatory agencies. Data sourced from the [Duke-Margolis Institute for Health Policy's International Harmonization of Real-World Evidence Standards Dashboard](https://healthpolicy.duke.edu/projects/international-harmonization-real-world-evidence-standards).
 
 🔗 **[Live Demo →](https://jdiazdecaro.github.io/rwe-harmonization-explorer/)**
 
---- 
+---
 
 ## What This Is
 
@@ -59,7 +59,7 @@ The 12 agencies covered: FDA (US), EMA (EU), Health Canada, PMDA (Japan), MHRA (
 ## Running Locally
 
 ```bash
-git clone https://github.com/jdiaz-decaro/rwe-harmonization-explorer.git
+git clone https://github.com/jdiazdecaro/rwe-harmonization-explorer.git
 cd rwe-harmonization-explorer
 npm install
 npm run dev
@@ -91,8 +91,8 @@ npm run deploy
 Black Swan Causal Labs, LLC
 
 - Chair, ISPE Digital Technology & AI Special Interest Group
-- Pharmacoepidemiologist with experience at Moderna and GSK
-- [LinkedIn](https://www.linkedin.com/in/jdiaz-decaro/) · [GitHub](https://github.com/jdiaz-decaro)
+- Pharmacoepidemiologist
+- [LinkedIn](https://www.linkedin.com/in/jdiazdecaro/) · [GitHub](https://github.com/jdiazdecaro)
 
 ---
 
