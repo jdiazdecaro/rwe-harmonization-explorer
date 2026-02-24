@@ -739,13 +739,19 @@ export default function RWEHarmonizationDashboard() {
       <div style={{ background: PALETTE.dukeNavy, padding: "24px 28px 0", position: "relative" }}>
         {/* Prototype badge */}
         <div style={{
-          position: "absolute", top: 16, right: 20,
-          background: "#e03131", color: "#fff",
-          fontSize: 10, fontWeight: 700, letterSpacing: "0.1em", textTransform: "uppercase",
-          padding: "4px 12px", borderRadius: 4,
-          boxShadow: "0 2px 8px rgba(224,49,49,0.35)",
+          position: "absolute", top: 16, right: 20, textAlign: "right",
         }}>
-          ⚠ Prototype
+          <div style={{
+            background: "#e03131", color: "#fff",
+            fontSize: 10, fontWeight: 700, letterSpacing: "0.1em", textTransform: "uppercase",
+            padding: "4px 12px", borderRadius: 4,
+            boxShadow: "0 2px 8px rgba(224,49,49,0.35)",
+          }}>
+            ⚠ Prototype
+          </div>
+          <div style={{ fontSize: 9, color: "rgba(255,255,255,0.45)", marginTop: 4, fontStyle: "italic" }}>
+            Best viewed on desktop
+          </div>
         </div>
         <div style={{ marginBottom: 16 }}>
           <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: "0.12em", color: "rgba(255,255,255,0.55)", textTransform: "uppercase", marginBottom: 6 }}>
