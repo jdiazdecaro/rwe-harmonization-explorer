@@ -3,6 +3,9 @@ name: Deploy to GitHub Pages
 on:
   push:
     branches: [main]
+  # Manual "Run workflow" button — click this after updating Airtable to
+  # refresh the published data.
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -25,6 +28,15 @@ jobs:
         with:
           node-version: 20
       - run: npm install
+      # Refresh src/data.json from Airtable. Uses a repo secret (token) and
+      # variable (base id). If the secret is absent, the script keeps the
+      # committed snapshot and the build still succeeds. The token is read as
+      # a plain env var (no VITE_ prefix) so Vite never inlines it into the bundle.
+      - name: Refresh data from Airtable
+        run: npm run fetch-data
+        env:
+          AIRTABLE_TOKEN: ${{ secrets.AIRTABLE_TOKEN }}
+          AIRTABLE_BASE_ID: ${{ vars.AIRTABLE_BASE_ID }}
       - run: npm run build
       - uses: actions/configure-pages@v4
       - uses: actions/upload-pages-artifact@v3

@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, useMemo, useCallback, Fragment, createContext, useContext } from "react";
 import { fetchDashboardData } from "./fetchAirtableData";
+import bakedData from "./data.json";
 import WorldMap from "./WorldMap";
 
 // ── Color Palette (Duke-Margolis Brand Guidelines) ─────────────────────
@@ -769,12 +770,15 @@ export default function RWEHarmonizationDashboard() {
     return () => { cancelled = true; };
   }, []);
 
-  // Use Airtable data if available, otherwise fall back to hardcoded constants
-  const agencies = liveData?.AGENCIES || AGENCIES;
-  const definitionConcepts = liveData?.DEFINITION_CONCEPTS || DEFINITION_CONCEPTS;
-  const definitionMatrix = liveData?.DEFINITION_MATRIX || DEFINITION_MATRIX;
-  const definitionExcerpts = liveData?.DEFINITION_EXCERPTS || DEFINITION_EXCERPTS;
-  const stanceDimensions = liveData?.STANCE_DIMENSIONS || STANCE_DIMENSIONS;
+  // Data source priority:
+  //   1. liveData    — live Airtable fetch (local dev with .env credentials)
+  //   2. bakedData   — build-time Airtable snapshot (src/data.json, refreshed on deploy)
+  //   3. hardcoded   — last-resort constants baked into this component
+  const agencies = liveData?.AGENCIES || bakedData?.AGENCIES || AGENCIES;
+  const definitionConcepts = liveData?.DEFINITION_CONCEPTS || bakedData?.DEFINITION_CONCEPTS || DEFINITION_CONCEPTS;
+  const definitionMatrix = liveData?.DEFINITION_MATRIX || bakedData?.DEFINITION_MATRIX || DEFINITION_MATRIX;
+  const definitionExcerpts = liveData?.DEFINITION_EXCERPTS || bakedData?.DEFINITION_EXCERPTS || DEFINITION_EXCERPTS;
+  const stanceDimensions = liveData?.STANCE_DIMENSIONS || bakedData?.STANCE_DIMENSIONS || STANCE_DIMENSIONS;
 
   const [view, setView] = useState("definitions");
   const [selectedDimension, setSelectedDimension] = useState(null);
@@ -879,15 +883,12 @@ export default function RWEHarmonizationDashboard() {
   return (
     <DataContext.Provider value={dataCtx}>
     <div style={{ fontFamily: "'Source Sans Pro','Source Sans 3','Segoe UI',sans-serif", background: PALETTE.bg, color: PALETTE.textPrimary, minHeight: "100vh", display: "flex", flexDirection: "column" }}>
-      {/* Data source indicator */}
+      {/* Data source indicator — shown only when connected live to Airtable in
+          local dev. The public build serves a current build-time snapshot, so
+          no "offline" banner is shown there. */}
       {liveData && (
         <div style={{ background: PALETTE.teal4, color: "#fff", textAlign: "center", padding: "3px 0", fontSize: 10, fontWeight: 600, letterSpacing: "0.05em" }}>
           LIVE DATA — Connected to Airtable
-        </div>
-      )}
-      {dataError && (
-        <div style={{ background: PALETTE.amber, color: "#fff", textAlign: "center", padding: "3px 0", fontSize: 10, fontWeight: 600, letterSpacing: "0.05em" }}>
-          OFFLINE — Using built-in data (Airtable unavailable)
         </div>
       )}
       {/* Injected keyframes and global styles */}
