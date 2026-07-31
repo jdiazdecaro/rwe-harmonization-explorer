@@ -1,9 +1,9 @@
 # Regulatory Harmonization Explorer
 ### Interactive Visualization of International Regulatory Real-World Evidence Standards
 
-> **Prototype** — An interactive dashboard mapping key RWE definitions and regulatory positions across 12 national regulatory agencies. Data sourced from the [Duke-Margolis Institute for Health Policy's International Harmonization of Real-World Evidence Standards Dashboard](https://healthpolicy.duke.edu/projects/international-harmonization-real-world-evidence-standards).
+> **Prototype** — An interactive dashboard mapping key RWE definitions, regulatory positions, and the geographic distribution of 12 national regulatory agencies. Data sourced from the [Duke-Margolis Institute for Health Policy's International Harmonization of Real-World Evidence Standards Dashboard](https://healthpolicy.duke.edu/projects/international-harmonization-real-world-evidence-standards).
 
-🔗 **[Live Demo →](https://jdiazdecaro.github.io/rwe-harmonization-explorer/)**
+🔗 **[Live Demo →](https://black-swan-causal-labs.github.io/rwe-harmonization-explorer/)**
 
 ---
 
@@ -16,6 +16,10 @@ This dashboard provides an interactive lens into how 12 national regulatory agen
 ### Key Definitions Heatmap
 
 Maps the definitional status of 7 core RWE concepts across all 12 agencies. Each cell represents whether an agency has formally defined, informally addressed, cited another agency, or left a concept undefined. Click any **agency row** to see its full definition profile, or click a **column header** to see cross-agency convergence metrics for that concept.
+
+### Agency Locations Map
+
+An interactive world map plots all 12 agencies by country, color-coded by region (Americas, Europe, Asia-Pacific, MENA). Displayed alongside the heatmap, it gives geographic context to the definitional landscape and makes the international scope of the harmonization effort immediately legible. The map is rendered as inline SVG from bundled TopoJSON, so it works fully offline with no external tile service.
 
 ### Regulatory Positions
 
@@ -54,33 +58,45 @@ All definitional data is sourced from the **Duke-Margolis Institute for Health P
 
 The 12 agencies covered: FDA (US), EMA (EU), Health Canada, PMDA (Japan), MHRA (UK), NMPA (China), TGA (Australia), ANVISA (Brazil), MFDS (South Korea), SFDA (Saudi Arabia), Swissmedic (Switzerland), TFDA (Taiwan).
 
+The dashboard ships with a bundled static snapshot of this data and can optionally load it live from an Airtable base during local development (see [Optional: live data from Airtable](#optional-live-data-from-airtable)). The public deployment always uses the bundled snapshot — no credentials are embedded in the published build.
+
 ---
 
 ## Running Locally
 
 ```bash
-git clone https://github.com/jdiazdecaro/rwe-harmonization-explorer.git
+git clone https://github.com/Black-Swan-Causal-Labs/rwe-harmonization-explorer.git
 cd rwe-harmonization-explorer
 npm install
 npm run dev
 ```
 
-Open [http://localhost:5173](http://localhost:5173) in your browser.
+Open [http://localhost:5173](http://localhost:5173) in your browser. With no configuration, the app renders the bundled static data.
 
-### Deploying to GitHub Pages
+### Optional: live data from Airtable
+
+To pull data live from Airtable during local development, copy the example env file and add your credentials:
 
 ```bash
-npm run build
-npm run deploy
+cp .env.example .env
+# edit .env and set VITE_AIRTABLE_TOKEN and VITE_AIRTABLE_BASE_ID
 ```
+
+`.env` is gitignored and never committed. Without credentials, the app automatically falls back to the built-in static snapshot — so the token is never required to run or deploy the dashboard.
+
+### Deployment
+
+The site deploys automatically to **GitHub Pages** via GitHub Actions ([`.github/workflows/deploy.yml`](.github/workflows/deploy.yml)) on every push to `main`. The workflow builds with no Airtable credentials, so the published bundle contains only the static snapshot.
 
 ---
 
 ## Technology
 
-- **React 18** — Single-component architecture, no external visualization libraries
+- **React 19** — Component-based architecture
+- **Interactive world map** — Rendered as inline SVG using [`topojson-client`](https://github.com/topojson/topojson-client) and [`world-atlas`](https://github.com/topojson/world-atlas) (110m TopoJSON); no tile service or map SDK
 - **Custom Sankey engine** — Lightweight flow diagram renderer built from scratch
-- **Vite** — Build tool for fast development and static deployment
+- **Optional Airtable integration** — Live data via the Airtable REST API, with a bundled static fallback
+- **Vite** — Build tool for fast development and static deployment; auto-deployed to GitHub Pages via GitHub Actions
 - **AI-assisted development** — Built collaboratively with Claude (Anthropic)
 
 ---
