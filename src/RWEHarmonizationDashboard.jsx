@@ -1,42 +1,55 @@
-import { useState, useEffect, useRef, useMemo, useCallback } from "react";
+import { useState, useEffect, useRef, useMemo, useCallback, Fragment, createContext, useContext } from "react";
+import { fetchDashboardData } from "./fetchAirtableData";
+import WorldMap from "./WorldMap";
 
-// ── Color Palette (Duke-Margolis aligned) ──────────────────────────────
+// ── Color Palette (Duke-Margolis Brand Guidelines) ─────────────────────
 const PALETTE = {
-  bg: "#f8f9fa",
-  surface: "#ffffff",
-  surfaceMuted: "#f1f3f5",
-  border: "#dee2e6",
-  borderLight: "#e9ecef",
-  textPrimary: "#212529",
-  textSecondary: "#495057",
-  textMuted: "#868e96",
-  textFaint: "#adb5bd",
-  dukeNavy: "#012169",
-  dukeLightBlue: "#0577B1",
-  teal0: "#e6f7f5",
-  teal1: "#b2e2db",
-  teal2: "#7bccc4",
-  teal3: "#43b5ac",
-  teal4: "#2a9d8f",
-  teal5: "#1a7a6f",
-  teal6: "#0d5c54",
-  amber: "#e8a838",
-  amberLight: "#fcedc6",
-  red: "#c0392b",
-  redLight: "#fadbd8",
+  // Backgrounds & Surfaces
+  bg: "#F2F2F2",           // Light Gray — page background
+  surface: "#FFFFFF",       // White — card / surface background
+  surfaceMuted: "#F2F2F2", // Light Gray — subtle backgrounds, alt rows
+  skyBlue: "#D6E8F5",      // Policy Sky Blue — pull quote/callout fills
+  border: "#c8cfd7",
+  borderLight: "#dce2e8",
+
+  // Text
+  textPrimary: "#222222",   // Dark Charcoal — primary body text
+  textSecondary: "#666666", // Mid Gray — body text, footnotes
+  textMuted: "#666666",     // Mid Gray
+  textFaint: "#999999",
+
+  // Primary Brand Colors
+  dukeNavy: "#001a57",      // Duke Navy — headers, section bars, logo bg
+  dukeBlue: "#1464A0",      // Duke Blue Medium — subheadings, links, active
+  skyBlueLight: "#D6E8F5",  // Policy Sky Blue — backgrounds
+
+  // Kept for data viz (teal accent per brand)
+  teal0: "#e3f4f5",
+  teal1: "#b2dde0",
+  teal2: "#7fc4c9",
+  teal3: "#4aabb1",
+  teal4: "#1A7A8A",         // Teal Accent (brand) — page numbers, decorative
+  teal5: "#156470",
+  teal6: "#0f4d57",
+
+  // Accent Colors
+  amber: "#C8631A",         // Orange-Amber (brand) — sparingly for emphasis
+  amberLight: "#f7e0ce",
+  red: "#b5281c",
+  redLight: "#f8dbd8",
 };
 
 const REGION_COLORS = {
-  Americas: "#0577B1",
-  Europe: "#012169",
-  "Asia-Pacific": "#2a9d8f",
-  MENA: "#e8a838",
+  Americas: "#1464A0",      // Duke Blue Medium
+  Europe: "#003366",        // Duke Navy
+  "Asia-Pacific": "#1A7A8A",// Teal Accent
+  MENA: "#C8631A",          // Orange-Amber
 };
 const REGION_BG = {
-  Americas: "#dbeefe",
-  Europe: "#d6dff2",
-  "Asia-Pacific": "#d5f0ec",
-  MENA: "#fcedc6",
+  Americas: "#D6E8F5",
+  Europe: "#cfd9e8",
+  "Asia-Pacific": "#ddf0f2",
+  MENA: "#f7e0ce",
 };
 
 // ── Data ───────────────────────────────────────────────────────────────
@@ -156,8 +169,8 @@ const DEFINITION_EXCERPTS = {
 const STATUS_CONFIG = {
   defined:     { bg: PALETTE.teal4, bgLight: PALETTE.teal0, label: "Formally Defined", short: "", textColor: "#fff" },
   informal:    { bg: PALETTE.amber, bgLight: PALETTE.amberLight, label: "Informal / Partial", short: "", textColor: "#fff" },
-  cites_other: { bg: PALETTE.dukeLightBlue, bgLight: "#dbeefe", label: "Cites Other Agency", short: "", textColor: "#fff" },
-  undetermined:{ bg: "#dee2e6", bgLight: "#f1f3f5", label: "Undetermined", short: "N/A", textColor: "#868e96" },
+  cites_other: { bg: PALETTE.dukeBlue, bgLight: PALETTE.skyBlue, label: "Cites Other Agency", short: "", textColor: "#fff" },
+  undetermined:{ bg: "#c8cfd7", bgLight: "#F2F2F2", label: "Undetermined", short: "N/A", textColor: "#666666" },
 };
 
 const STANCE_DIMENSIONS = [
@@ -205,23 +218,59 @@ const STANCE_DIMENSIONS = [
 
 const MATURITY_COLORS = { 0: PALETTE.teal4, 1: PALETTE.amber, 2: PALETTE.red };
 
+// ── Custom hook: useIsMobile ──────────────────────────────────────────
+function useIsMobile(breakpoint = 900) {
+  const [isMobile, setIsMobile] = useState(() => typeof window !== "undefined" ? window.innerWidth < breakpoint : false);
+  useEffect(() => {
+    const handler = () => setIsMobile(window.innerWidth < breakpoint);
+    window.addEventListener("resize", handler);
+    return () => window.removeEventListener("resize", handler);
+  }, [breakpoint]);
+  return isMobile;
+}
+
+// ── Keyboard handler helper ───────────────────────────────────────────
+function handleKeyActivate(callback) {
+  return (e) => {
+    if (e.key === "Enter" || e.key === " ") {
+      e.preventDefault();
+      callback(e);
+    }
+  };
+}
+
+// ── Data Context (allows sub-components to use Airtable data when available) ──
+const DataContext = createContext(null);
+function useData() {
+  const ctx = useContext(DataContext);
+  // Fall back to module-level constants if no context provided
+  return {
+    AGENCIES: ctx?.AGENCIES || AGENCIES,
+    DEFINITION_CONCEPTS: ctx?.DEFINITION_CONCEPTS || DEFINITION_CONCEPTS,
+    DEFINITION_MATRIX: ctx?.DEFINITION_MATRIX || DEFINITION_MATRIX,
+    DEFINITION_EXCERPTS: ctx?.DEFINITION_EXCERPTS || DEFINITION_EXCERPTS,
+    STANCE_DIMENSIONS: ctx?.STANCE_DIMENSIONS || STANCE_DIMENSIONS,
+  };
+}
+
 // ── Sankey Engine ──────────────────────────────────────────────────────
-function computeSankey(dim, cW, cH) {
+function computeSankey(dim, cW, cH, agenciesList) {
   const nW = 14, pad = 10, leftPad = 120;
-  const ag = AGENCIES.filter(a => dim.positions.some(p => p.agencies.includes(a.id)));
+  const nodeH = 30;
+  const ag = agenciesList.filter(a => dim.positions.some(p => p.agencies.includes(a.id)));
   const L = ag.map(a => ({ ...a, side: "left" }));
   const R = dim.positions.map((p, i) => ({ id: p.id, label: p.label, count: p.agencies.length, posIndex: i, maturity: p.maturity }));
-  const lH = L.length * 28 + (L.length - 1) * pad, lS = Math.max(0, (cH - lH) / 2);
-  L.forEach((n, i) => { n.x = leftPad; n.y = lS + i * (28 + pad); n.h = 28; n.w = nW; });
-  const rH = R.reduce((s, n) => s + n.count * 28, 0) + (R.length - 1) * (pad + 6), rS = Math.max(0, (cH - rH) / 2);
-  let ry = rS; R.forEach(n => { n.x = cW - nW; n.y = ry; n.h = n.count * 28; n.w = nW; ry += n.h + pad + 6; });
+  const lH = L.length * nodeH + (L.length - 1) * pad, lS = Math.max(0, (cH - lH) / 2);
+  L.forEach((n, i) => { n.x = leftPad; n.y = lS + i * (nodeH + pad); n.h = nodeH; n.w = nW; });
+  const rH = R.reduce((s, n) => s + n.count * nodeH, 0) + (R.length - 1) * (pad + 8), rS = Math.max(0, (cH - rH) / 2);
+  let ry = rS; R.forEach(n => { n.x = cW - nW; n.y = ry; n.h = n.count * nodeH; n.w = nW; ry += n.h + pad + 8; });
   const rO = {}; R.forEach(n => { rO[n.id] = 0; });
   const links = [];
   dim.positions.forEach((p, pi) => {
     p.agencies.forEach(aId => {
       const l = L.find(n => n.id === aId), r = R.find(n => n.id === p.id);
       if (!l || !r) return;
-      const h = 22, sy = l.y + l.h / 2, ty = r.y + rO[p.id] + h / 2;
+      const h = 26, sy = l.y + l.h / 2, ty = r.y + rO[p.id] + h / 2;
       rO[p.id] += h + 5;
       links.push({ source: l, target: r, sy, ty, height: h, agencyId: aId, posIndex: pi, region: l.region });
     });
@@ -245,20 +294,22 @@ function CellTooltip({ data }) {
     <div style={{
       position: "fixed", left: data.x, top: data.y - 14,
       transform: "translate(-50%, -100%)", zIndex: 9999,
-      background: PALETTE.surface, border: `1px solid ${PALETTE.border}`,
-      borderRadius: 10, padding: "16px 20px", maxWidth: 420, minWidth: 280,
-      boxShadow: "0 8px 30px rgba(0,0,0,0.12), 0 2px 8px rgba(0,0,0,0.06)",
+      background: PALETTE.surface, border: `1px solid ${PALETTE.dukeBlue}`,
+      borderTop: `3px solid ${PALETTE.dukeNavy}`,
+      borderRadius: 6, padding: "14px 18px", maxWidth: 420, minWidth: 280,
+      boxShadow: "0 8px 30px rgba(0,51,102,0.14), 0 2px 8px rgba(0,0,0,0.06)",
       pointerEvents: "none",
     }}>
       {/* Header row */}
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8, gap: 10 }}>
         <div>
-          <span style={{ fontSize: 15, fontWeight: 700, color: PALETTE.dukeNavy }}>{data.agency.label}</span>
-          <span style={{ fontSize: 12.5, color: PALETTE.textMuted, marginLeft: 6 }}>— {data.concept.label}</span>
+          <span style={{ fontSize: 14, fontWeight: 700, color: PALETTE.dukeNavy }}>{data.agency.label}</span>
+          <span style={{ fontSize: 12, color: PALETTE.textMuted, marginLeft: 6 }}>— {data.concept.label}</span>
         </div>
         <span style={{
-          fontSize: 10, fontWeight: 700, padding: "2px 8px", borderRadius: 4, whiteSpace: "nowrap",
+          fontSize: 9.5, fontWeight: 700, padding: "2px 8px", borderRadius: 3, whiteSpace: "nowrap",
           background: cfg.bgLight, color: data.status === "undetermined" ? PALETTE.textMuted : cfg.bg,
+          textTransform: "uppercase", letterSpacing: "0.06em",
         }}>
           {cfg.label}
         </span>
@@ -268,23 +319,23 @@ function CellTooltip({ data }) {
 
       {/* Definition excerpt or fallback */}
       {data.excerpt ? (
-        <div style={{ fontSize: 13, lineHeight: 1.65, color: PALETTE.textPrimary }}>{data.excerpt}</div>
+        <div style={{ fontSize: 12.5, lineHeight: 1.65, color: PALETTE.textPrimary, fontStyle: "italic" }}>{data.excerpt}</div>
       ) : (
-        <div style={{ fontSize: 12.5, color: PALETTE.textMuted, fontStyle: "italic" }}>
+        <div style={{ fontSize: 12, color: PALETTE.textMuted, fontStyle: "italic" }}>
           {data.status === "undetermined"
             ? "No definition found in published guidance documents for this concept."
             : "Definition excerpt not yet captured in the tracker. Refer to the agency's published guidance for details."}
         </div>
       )}
 
-      <div style={{ marginTop: 10, fontSize: 10, color: PALETTE.textFaint }}>Source: Duke-Margolis Institute for Health Policy, International Harmonization of Real-World Evidence Standards Dashboard</div>
+      <div style={{ marginTop: 10, fontSize: 9.5, color: PALETTE.textFaint }}>Source: Duke-Margolis Institute for Health Policy, International Harmonization of Real-World Evidence Standards Dashboard</div>
 
       {/* Arrow pointing down */}
       <div style={{
         position: "absolute", bottom: -7, left: "50%",
         transform: "translateX(-50%) rotate(45deg)",
         width: 12, height: 12, background: PALETTE.surface,
-        borderRight: `1px solid ${PALETTE.border}`, borderBottom: `1px solid ${PALETTE.border}`,
+        borderRight: `1px solid ${PALETTE.borderLight}`, borderBottom: `1px solid ${PALETTE.borderLight}`,
       }} />
     </div>
   );
@@ -292,30 +343,36 @@ function CellTooltip({ data }) {
 
 // ── Definition Heatmap (HTML table, horizontal headers) ───────────────
 function DefinitionHeatmap({ hoveredAgency, lockedAgency, hoveredConcept, lockedConcept, onHoverAgency, onLockAgency, onHoverConcept, onLockConcept, onCellHover, onCellLeave }) {
+  const { AGENCIES, DEFINITION_CONCEPTS, DEFINITION_MATRIX, DEFINITION_EXCERPTS } = useData();
   const activeAgency = lockedAgency || hoveredAgency;
   const activeConcept = lockedConcept || hoveredConcept;
   return (
     <div style={{ overflowX: "auto" }}>
-      <table style={{ borderCollapse: "separate", borderSpacing: "3px 2px", fontFamily: "'Source Sans 3',sans-serif", width: "auto" }}>
+      <table role="grid" style={{ borderCollapse: "separate", borderSpacing: "3px 0", fontFamily: "'Source Sans Pro','Source Sans 3',sans-serif", width: "auto" }}>
         <thead>
-          <tr>
+          <tr role="row">
             <th style={{ width: 100, padding: "8px 8px 10px 0", textAlign: "right" }} />
             {DEFINITION_CONCEPTS.map(c => {
               const isActive = activeConcept === c.id;
               const isLocked = lockedConcept === c.id;
               return (
                 <th key={c.id}
+                  role="columnheader"
+                  tabIndex={0}
+                  aria-label={`Filter by concept: ${c.label}`}
                   onMouseEnter={() => { if (!lockedConcept) onHoverConcept(c.id); }}
                   onMouseLeave={() => { if (!lockedConcept) onHoverConcept(null); }}
                   onClick={() => onLockConcept(c.id)}
+                  onKeyDown={handleKeyActivate(() => onLockConcept(c.id))}
                   style={{
-                    padding: "8px 10px 10px", fontSize: 12.5, fontWeight: 700,
-                    color: isActive ? "#fff" : PALETTE.dukeNavy,
+                    padding: "8px 10px 10px", fontSize: 11.5, fontWeight: 700,
+                    color: isActive ? "#fff" : PALETTE.textSecondary,
                     background: isActive ? PALETTE.dukeNavy : "transparent",
                     textAlign: "center", whiteSpace: "nowrap",
+                    textTransform: "uppercase", letterSpacing: "0.05em",
                     borderBottom: isLocked ? `3px solid ${PALETTE.teal4}` : `2px solid ${PALETTE.border}`,
                     minWidth: 95, cursor: "pointer",
-                    borderRadius: isActive ? "6px 6px 0 0" : 0,
+                    borderRadius: isActive ? "5px 5px 0 0" : 0,
                     transition: "all 0.15s",
                   }}>
                   {c.label}
@@ -329,15 +386,20 @@ function DefinitionHeatmap({ hoveredAgency, lockedAgency, hoveredConcept, locked
             const isRowActive = activeAgency === a.id;
             return (
               <tr key={a.id}
+                role="row"
+                tabIndex={0}
+                aria-label={`Agency: ${a.label} (${a.full})`}
                 onMouseEnter={() => { if (!lockedAgency) onHoverAgency(a.id); }}
                 onMouseLeave={() => { if (!lockedAgency) onHoverAgency(null); }}
                 onClick={() => onLockAgency(a.id)}
+                onKeyDown={handleKeyActivate(() => onLockAgency(a.id))}
                 style={{
                   background: isRowActive ? REGION_BG[a.region] : (ai % 2 === 0 ? PALETTE.surfaceMuted : PALETTE.surface),
                   transition: "background 0.15s",
                   cursor: "pointer",
+                  borderBottom: `1px solid ${PALETTE.borderLight}`,
                 }}>
-                <td style={{
+                <td role="rowheader" style={{
                   padding: "6px 10px 6px 0", textAlign: "right", fontSize: 12.5,
                   fontWeight: isRowActive ? 700 : 500,
                   color: isRowActive ? PALETTE.textPrimary : PALETTE.textSecondary,
@@ -359,14 +421,21 @@ function DefinitionHeatmap({ hoveredAgency, lockedAgency, hoveredConcept, locked
                   const excerpt = DEFINITION_EXCERPTS[a.id]?.[c.id];
                   return (
                     <td key={c.id}
+                      role="gridcell"
+                      tabIndex={0}
+                      aria-label={`${a.label} ${c.label}: ${cfg.label}`}
                       onMouseEnter={(e) => {
                         const r = e.currentTarget.getBoundingClientRect();
                         onCellHover({ agency: a, concept: c, status, excerpt, x: r.left + r.width / 2, y: r.top });
                       }}
                       onMouseLeave={onCellLeave}
+                      onKeyDown={handleKeyActivate((e) => {
+                        const r = e.currentTarget.getBoundingClientRect();
+                        onCellHover({ agency: a, concept: c, status, excerpt, x: r.left + r.width / 2, y: r.top });
+                      })}
                       style={{
                         textAlign: "center", padding: "4px 3px", cursor: "pointer",
-                        background: isColActive ? "rgba(1,33,105,0.04)" : "transparent",
+                        background: isColActive ? "rgba(0,51,102,0.05)" : "transparent",
                         transition: "background 0.15s",
                       }}>
                       <div style={{
@@ -399,6 +468,7 @@ function DefinitionHeatmap({ hoveredAgency, lockedAgency, hoveredConcept, locked
 
 // ── Agency Crosscut Panel ─────────────────────────────────────────────
 function AgencyCrosscut({ agencyId }) {
+  const { AGENCIES, DEFINITION_CONCEPTS, DEFINITION_MATRIX, DEFINITION_EXCERPTS, STANCE_DIMENSIONS } = useData();
   const agency = AGENCIES.find(a => a.id === agencyId);
   if (!agency) return null;
   const counts = { defined: 0, informal: 0, cites_other: 0, undetermined: 0 };
@@ -406,7 +476,7 @@ function AgencyCrosscut({ agencyId }) {
   const definedPct = Math.round(((counts.defined + (counts.cites_other || 0)) + counts.informal * 0.5) / DEFINITION_CONCEPTS.length * 100);
 
   return (
-    <div style={{ background: PALETTE.surface, border: `1px solid ${PALETTE.border}`, borderRadius: 8, padding: 16, marginBottom: 16, boxShadow: "0 1px 3px rgba(0,0,0,0.04)" }}>
+    <div style={{ background: PALETTE.surface, border: `1px solid ${PALETTE.border}`, borderRadius: 8, padding: 16, marginBottom: 16, boxShadow: "0 1px 3px rgba(0,0,0,0.04)", animation: "fadeSlideIn 0.3s ease-out" }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 12 }}>
         <div>
           <div style={{ fontSize: 16, fontWeight: 700, color: PALETTE.dukeNavy }}>{agency.label}</div>
@@ -417,17 +487,17 @@ function AgencyCrosscut({ agencyId }) {
           </div>
         </div>
         <div style={{ textAlign: "right" }}>
-          <div style={{ fontSize: 24, fontWeight: 700, color: definedPct >= 60 ? PALETTE.teal5 : definedPct >= 30 ? PALETTE.amber : PALETTE.red, fontFamily: "'Source Code Pro',monospace" }}>
+          <div style={{ fontSize: 24, fontWeight: 700, color: definedPct >= 60 ? PALETTE.teal4 : definedPct >= 30 ? PALETTE.amber : PALETTE.red, fontFamily: "'Source Code Pro',monospace" }}>
             {definedPct}%
           </div>
           <div style={{ fontSize: 9, color: PALETTE.textMuted, fontWeight: 600, letterSpacing: "0.06em", textTransform: "uppercase" }}>Coverage</div>
         </div>
       </div>
       <div style={{ fontSize: 10, color: PALETTE.textMuted, lineHeight: 1.5, marginBottom: 12, padding: "6px 8px", background: PALETTE.surfaceMuted, borderRadius: 4, border: `1px solid ${PALETTE.borderLight}` }}>
-        <strong>Coverage</strong> = (Formally Defined + Cites Other × 1.0 + Informal × 0.5) ÷ {DEFINITION_CONCEPTS.length} concepts
+        <strong>Coverage</strong> = (Formally Defined × 1.0 + Cites Other × 1.0 + Informal × 0.5) ÷ {DEFINITION_CONCEPTS.length} concepts
       </div>
 
-      <div style={{ fontSize: 10, fontWeight: 700, color: PALETTE.textMuted, letterSpacing: "0.1em", textTransform: "uppercase", marginBottom: 6, borderBottom: `1px solid ${PALETTE.borderLight}`, paddingBottom: 4 }}>Key Definitions</div>
+          <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: "0.1em", textTransform: "uppercase", color: PALETTE.dukeBlue, marginBottom: 6, borderBottom: `2px solid ${PALETTE.dukeNavy}`, paddingBottom: 4 }}>Key Definitions</div>
       {DEFINITION_CONCEPTS.map(c => {
         const status = DEFINITION_MATRIX[agencyId]?.[c.id] || "undetermined";
         const cfg = STATUS_CONFIG[status];
@@ -443,7 +513,7 @@ function AgencyCrosscut({ agencyId }) {
         );
       })}
 
-      <div style={{ fontSize: 10, fontWeight: 700, color: PALETTE.textMuted, letterSpacing: "0.1em", textTransform: "uppercase", marginTop: 14, marginBottom: 6, borderBottom: `1px solid ${PALETTE.borderLight}`, paddingBottom: 4 }}>Regulatory Positions</div>
+      <div style={{ fontSize: 10, fontWeight: 700, color: PALETTE.dukeBlue, letterSpacing: "0.1em", textTransform: "uppercase", marginTop: 14, marginBottom: 6, borderBottom: `2px solid ${PALETTE.dukeNavy}`, paddingBottom: 4 }}>Regulatory Positions</div>
       {STANCE_DIMENSIONS.map(d => {
         const pos = d.positions.find(p => p.agencies.includes(agencyId));
         if (!pos) return null;
@@ -460,6 +530,7 @@ function AgencyCrosscut({ agencyId }) {
 
 // ── Concept Crosscut Panel ────────────────────────────────────────────
 function ConceptCrosscut({ conceptId }) {
+  const { AGENCIES, DEFINITION_CONCEPTS, DEFINITION_MATRIX, DEFINITION_EXCERPTS } = useData();
   const concept = DEFINITION_CONCEPTS.find(c => c.id === conceptId);
   if (!concept) return null;
 
@@ -478,12 +549,12 @@ function ConceptCrosscut({ conceptId }) {
   const statusBreakdown = [
     { key: "defined", label: "Formally Defined", count: counts.defined, color: PALETTE.teal4, bgColor: PALETTE.teal0 },
     { key: "informal", label: "Informal / Partial", count: counts.informal, color: PALETTE.amber, bgColor: PALETTE.amberLight },
-    { key: "cites_other", label: "Cites Other Agency", count: counts.cites_other, color: PALETTE.dukeLightBlue, bgColor: "#dbeefe" },
-    { key: "undetermined", label: "Undetermined", count: counts.undetermined, color: "#adb5bd", bgColor: "#f1f3f5" },
+    { key: "cites_other", label: "Cites Other Agency", count: counts.cites_other, color: PALETTE.dukeBlue, bgColor: PALETTE.skyBlue },
+    { key: "undetermined", label: "Undetermined", count: counts.undetermined, color: "#999999", bgColor: "#F2F2F2" },
   ];
 
   return (
-    <div style={{ background: PALETTE.surface, border: `1px solid ${PALETTE.border}`, borderRadius: 8, padding: 16, marginBottom: 16, boxShadow: "0 1px 3px rgba(0,0,0,0.04)" }}>
+    <div style={{ background: PALETTE.surface, border: `1px solid ${PALETTE.border}`, borderRadius: 8, padding: 16, marginBottom: 16, boxShadow: "0 1px 3px rgba(0,0,0,0.04)", animation: "fadeSlideIn 0.3s ease-out" }}>
       {/* Header */}
       <div style={{ marginBottom: 14 }}>
         <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: "0.1em", textTransform: "uppercase", color: PALETTE.textMuted, marginBottom: 3 }}>Concept Profile</div>
@@ -504,7 +575,7 @@ function ConceptCrosscut({ conceptId }) {
       </div>
 
       {/* Status breakdown */}
-      <div style={{ fontSize: 10, fontWeight: 700, color: PALETTE.textMuted, letterSpacing: "0.1em", textTransform: "uppercase", marginBottom: 8, borderBottom: `1px solid ${PALETTE.borderLight}`, paddingBottom: 4 }}>
+      <div style={{ fontSize: 10, fontWeight: 700, color: PALETTE.dukeBlue, letterSpacing: "0.1em", textTransform: "uppercase", marginBottom: 8, borderBottom: `2px solid ${PALETTE.dukeNavy}`, paddingBottom: 4 }}>
         Status Breakdown ({total} agencies)
       </div>
 
@@ -542,7 +613,7 @@ function ConceptCrosscut({ conceptId }) {
       ))}
 
       {/* Agency list per status */}
-      <div style={{ fontSize: 10, fontWeight: 700, color: PALETTE.textMuted, letterSpacing: "0.1em", textTransform: "uppercase", marginTop: 14, marginBottom: 6, borderBottom: `1px solid ${PALETTE.borderLight}`, paddingBottom: 4 }}>
+      <div style={{ fontSize: 10, fontWeight: 700, color: PALETTE.dukeBlue, letterSpacing: "0.1em", textTransform: "uppercase", marginTop: 14, marginBottom: 6, borderBottom: `2px solid ${PALETTE.dukeNavy}`, paddingBottom: 4 }}>
         Per-Agency Detail
       </div>
       {AGENCIES.map(a => {
@@ -568,6 +639,7 @@ function ConceptCrosscut({ conceptId }) {
 
 // ── Position Crosscut Panel (Sankey cluster) ──────────────────────────
 function PositionCrosscut({ dimension, positionIndex }) {
+  const { AGENCIES } = useData();
   if (!dimension || positionIndex === null || positionIndex === undefined) return null;
   const position = dimension.positions[positionIndex];
   if (!position) return null;
@@ -585,7 +657,7 @@ function PositionCrosscut({ dimension, positionIndex }) {
   const maturityLabel = maturityLabels[position.maturity] || "Unknown";
 
   return (
-    <div style={{ background: PALETTE.surface, border: `1px solid ${PALETTE.border}`, borderRadius: 8, padding: 16, marginBottom: 16, boxShadow: "0 1px 3px rgba(0,0,0,0.04)" }}>
+    <div style={{ background: PALETTE.surface, border: `1px solid ${PALETTE.border}`, borderRadius: 8, padding: 16, marginBottom: 16, boxShadow: "0 1px 3px rgba(0,0,0,0.04)", animation: "fadeSlideIn 0.3s ease-out" }}>
       {/* Header */}
       <div style={{ marginBottom: 4 }}>
         <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: "0.1em", textTransform: "uppercase", color: PALETTE.textMuted, marginBottom: 3 }}>Cluster Profile</div>
@@ -681,8 +753,31 @@ function PositionCrosscut({ dimension, positionIndex }) {
 
 // ── Main Dashboard ────────────────────────────────────────────────────
 export default function RWEHarmonizationDashboard() {
+  // ── Airtable data loading ──
+  const [liveData, setLiveData] = useState(null);
+  const [dataError, setDataError] = useState(null);
+  const [dataLoading, setDataLoading] = useState(true);
+
+  useEffect(() => {
+    let cancelled = false;
+    fetchDashboardData()
+      .then((data) => { if (!cancelled) { setLiveData(data); setDataLoading(false); } })
+      .catch((err) => {
+        console.warn("Airtable fetch failed, using hardcoded fallback:", err);
+        if (!cancelled) { setDataError(err); setDataLoading(false); }
+      });
+    return () => { cancelled = true; };
+  }, []);
+
+  // Use Airtable data if available, otherwise fall back to hardcoded constants
+  const agencies = liveData?.AGENCIES || AGENCIES;
+  const definitionConcepts = liveData?.DEFINITION_CONCEPTS || DEFINITION_CONCEPTS;
+  const definitionMatrix = liveData?.DEFINITION_MATRIX || DEFINITION_MATRIX;
+  const definitionExcerpts = liveData?.DEFINITION_EXCERPTS || DEFINITION_EXCERPTS;
+  const stanceDimensions = liveData?.STANCE_DIMENSIONS || STANCE_DIMENSIONS;
+
   const [view, setView] = useState("definitions");
-  const [selectedDimension, setSelectedDimension] = useState(STANCE_DIMENSIONS[0].id);
+  const [selectedDimension, setSelectedDimension] = useState(null);
   const [hoveredAgency, setHoveredAgency] = useState(null);
   const [lockedAgency, setLockedAgency] = useState(null);
   const [hoveredConcept, setHoveredConcept] = useState(null);
@@ -692,6 +787,17 @@ export default function RWEHarmonizationDashboard() {
   const [cellTooltip, setCellTooltip] = useState(null);
   const containerRef = useRef(null);
   const [chartW, setChartW] = useState(480);
+
+  // Responsive sidebar state
+  const [sidebarOpen, setSidebarOpen] = useState(true);
+  const isMobile = useIsMobile(900);
+  const isNarrow = useIsMobile(1080); // map stacks below heatmap under 1080px
+
+  // View transition key for fade effect
+  const [viewTransitionKey, setViewTransitionKey] = useState(0);
+
+  // Default selectedDimension once data is available
+  const effectiveDimension = selectedDimension || (stanceDimensions[0]?.id ?? null);
 
   // Active states = locked takes priority over hovered
   const activeAgency = lockedAgency || hoveredAgency;
@@ -718,62 +824,175 @@ export default function RWEHarmonizationDashboard() {
   useEffect(() => {
     const el = containerRef.current;
     if (!el) return;
+    setChartW(Math.max(380, el.getBoundingClientRect().width - 16));
     const obs = new ResizeObserver(entries => { setChartW(Math.max(380, entries[0].contentRect.width - 16)); });
     obs.observe(el);
     return () => obs.disconnect();
-  }, []);
+  }, [dataLoading]);
 
-  const dimension = STANCE_DIMENSIONS.find(d => d.id === selectedDimension);
-  const chartH = 520;
-  const layout = useMemo(() => computeSankey(dimension, chartW - 200, chartH), [dimension, chartW]);
+  // Close sidebar on mobile by default, open on desktop
+  useEffect(() => {
+    setSidebarOpen(!isMobile);
+  }, [isMobile]);
+
+  const dimension = stanceDimensions.find(d => d.id === effectiveDimension);
+  const agencyCount = dimension ? agencies.filter(a => dimension.positions.some(p => p.agencies.includes(a.id))).length : 0;
+  const chartH = Math.max(480, agencyCount * 40 + 20);
+  const sankeyW = Math.max(300, chartW - 220);
+  const layout = useMemo(() => dimension ? computeSankey(dimension, sankeyW, chartH, agencies) : { leftNodes: [], rightNodes: [], links: [] }, [dimension, sankeyW, chartH, agencies]);
   const isActive = activeAgency !== null || activePosition !== null;
 
+  // Handle view switching with transition
+  const handleViewSwitch = useCallback((newView) => {
+    setView(newView);
+    setViewTransitionKey(prev => prev + 1);
+    setHoveredAgency(null);
+    setLockedAgency(null);
+    setLockedConcept(null);
+    setHoveredConcept(null);
+    setHoveredPosition(null);
+    setLockedPosition(null);
+    setCellTooltip(null);
+  }, []);
+
+  // Data context value for sub-components
+  const dataCtx = useMemo(() => ({
+    AGENCIES: agencies,
+    DEFINITION_CONCEPTS: definitionConcepts,
+    DEFINITION_MATRIX: definitionMatrix,
+    DEFINITION_EXCERPTS: definitionExcerpts,
+    STANCE_DIMENSIONS: stanceDimensions,
+  }), [agencies, definitionConcepts, definitionMatrix, definitionExcerpts, stanceDimensions]);
+
+  // Loading state
+  if (dataLoading) {
+    return (
+      <div style={{ fontFamily: "'Source Sans Pro','Source Sans 3','Segoe UI',sans-serif", background: PALETTE.bg, minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center" }}>
+        <div style={{ textAlign: "center" }}>
+          <div style={{ fontSize: 16, fontWeight: 600, color: PALETTE.dukeNavy, marginBottom: 8 }}>Loading dashboard data...</div>
+          <div style={{ fontSize: 12, color: PALETTE.textMuted }}>Fetching from Airtable</div>
+        </div>
+      </div>
+    );
+  }
+
   return (
-    <div style={{ fontFamily: "'Source Sans 3','Segoe UI',sans-serif", background: PALETTE.bg, color: PALETTE.textPrimary, minHeight: "100vh", display: "flex", flexDirection: "column" }}>
-      <link href="https://fonts.googleapis.com/css2?family=Source+Sans+3:wght@400;500;600;700&family=Source+Code+Pro:wght@400;500;600&display=swap" rel="stylesheet" />
+    <DataContext.Provider value={dataCtx}>
+    <div style={{ fontFamily: "'Source Sans Pro','Source Sans 3','Segoe UI',sans-serif", background: PALETTE.bg, color: PALETTE.textPrimary, minHeight: "100vh", display: "flex", flexDirection: "column" }}>
+      {/* Data source indicator */}
+      {liveData && (
+        <div style={{ background: PALETTE.teal4, color: "#fff", textAlign: "center", padding: "3px 0", fontSize: 10, fontWeight: 600, letterSpacing: "0.05em" }}>
+          LIVE DATA — Connected to Airtable
+        </div>
+      )}
+      {dataError && (
+        <div style={{ background: PALETTE.amber, color: "#fff", textAlign: "center", padding: "3px 0", fontSize: 10, fontWeight: 600, letterSpacing: "0.05em" }}>
+          OFFLINE — Using built-in data (Airtable unavailable)
+        </div>
+      )}
+      {/* Injected keyframes and global styles */}
+      <style>{`
+        @keyframes fadeSlideIn {
+          from { opacity: 0; transform: translateY(8px); }
+          to { opacity: 1; transform: translateY(0); }
+        }
+        .rwe-focus-visible:focus-visible {
+          outline: 2px solid ${PALETTE.dukeBlue};
+          outline-offset: 2px;
+        }
+        .rwe-skip-link {
+          position: absolute;
+          left: -9999px;
+          top: 0;
+          z-index: 10000;
+          background: ${PALETTE.dukeNavy};
+          color: #fff;
+          padding: 8px 16px;
+          font-size: 13px;
+          text-decoration: none;
+          border-radius: 0 0 4px 0;
+        }
+        .rwe-skip-link:focus {
+          left: 0;
+        }
+        @media (max-width: 899px) {
+          .rwe-sidebar-overlay {
+            position: fixed !important;
+            top: 0 !important;
+            right: 0 !important;
+            bottom: 0 !important;
+            width: 310px !important;
+            max-width: 85vw !important;
+            z-index: 1000 !important;
+            box-shadow: -4px 0 20px rgba(0,0,0,0.18) !important;
+            transition: transform 0.3s ease !important;
+          }
+          .rwe-sidebar-closed {
+            transform: translateX(100%) !important;
+          }
+          .rwe-sidebar-open {
+            transform: translateX(0) !important;
+          }
+        }
+      `}</style>
+
+      {/* Skip to content link */}
+      <a href="#rwe-main-content" className="rwe-skip-link">Skip to main content</a>
+
+      <link href="https://fonts.googleapis.com/css2?family=Source+Sans+Pro:ital,wght@0,400;0,600;0,700;1,400&family=Source+Sans+3:wght@400;500;600;700&family=Source+Code+Pro:wght@400;500;600&display=swap" rel="stylesheet" />
 
       {/* Floating tooltip for heatmap cells */}
       <CellTooltip data={cellTooltip} />
 
       {/* ── Header Banner ───────────────────────────── */}
-      <div style={{ background: PALETTE.dukeNavy, padding: "24px 28px 0", position: "relative" }}>
-        {/* Prototype badge */}
-        <div style={{
-          position: "absolute", top: 16, right: 20, textAlign: "right",
-        }}>
-          <div style={{
-            background: "#e03131", color: "#fff",
-            fontSize: 10, fontWeight: 700, letterSpacing: "0.1em", textTransform: "uppercase",
-            padding: "4px 12px", borderRadius: 4,
-            boxShadow: "0 2px 8px rgba(224,49,49,0.35)",
-          }}>
-            ⚠ Prototype
-          </div>
-          <div style={{ fontSize: 9, color: "rgba(255,255,255,0.45)", marginTop: 4, fontStyle: "italic" }}>
-            Best viewed on desktop
+      <div style={{ background: PALETTE.dukeNavy, padding: "0 0 0", position: "relative" }}>
+
+        {/* ── Top identity bar: Logo + Prototype badge ── */}
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "16px 28px 14px" }}>
+          {/* Duke-Margolis Logo */}
+          <img
+            src={`${import.meta.env.BASE_URL}duke-margolis-logo.png`}
+            alt="Duke Margolis Institute for Health Policy"
+            style={{ height: 88, display: "block" }}
+          />
+
+          {/* Prototype badge — top-right per layout */}
+          <div style={{ textAlign: "right" }}>
+            <div style={{
+              background: PALETTE.amber, color: "#fff",
+              fontSize: 9.5, fontWeight: 700, letterSpacing: "0.12em", textTransform: "uppercase",
+              padding: "4px 12px", borderRadius: 3,
+            }}>
+              Prototype
+            </div>
+            <div style={{ fontSize: 9, color: "rgba(255,255,255,0.40)", marginTop: 4, fontStyle: "italic" }}>
+              Best viewed on desktop
+            </div>
           </div>
         </div>
-        <div style={{ marginBottom: 16 }}>
-          <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: "0.12em", color: "rgba(255,255,255,0.55)", textTransform: "uppercase", marginBottom: 6 }}>
-            Regulatory Harmonization Explorer
-          </div>
-          <h1 style={{ fontSize: 22, fontWeight: 700, margin: 0, color: "#ffffff", lineHeight: 1.3 }}>
+
+        {/* ── Document title block ── */}
+        <div style={{ padding: "16px 28px 0" }}>
+          <h1 style={{ fontSize: 22, fontWeight: 700, margin: 0, color: "#FFFFFF", lineHeight: 1.3, fontFamily: "'Source Sans Pro',sans-serif" }}>
             International Regulatory Real-World Evidence Standards
           </h1>
-          <p style={{ fontSize: 12.5, color: "rgba(255,255,255,0.65)", margin: "6px 0 0", maxWidth: 620, lineHeight: 1.55 }}>
-            Mapping key definitions and regulatory positions across {AGENCIES.length} national regulatory agencies. Data sourced from the Duke-Margolis Institute for Health Policy's International Harmonization of Real-World Evidence Standards Dashboard.
+          <p style={{ fontSize: 12.5, color: "rgba(255,255,255,0.65)", margin: "7px 0 0", maxWidth: 660, lineHeight: 1.55 }}>
+            Mapping key definitions and regulatory positions across {agencies.length} national regulatory agencies. Data sourced from the Duke-Margolis Institute for Health Policy's International Harmonization of Real-World Evidence Standards Dashboard.
           </p>
         </div>
-        {/* Tabs */}
-        <div style={{ display: "flex", gap: 0 }}>
+
+        {/* ── Tabs ── */}
+        <div style={{ display: "flex", gap: 0, marginTop: 18, paddingLeft: 28, flexWrap: "wrap" }}>
           {[{ id: "definitions", label: "Key Definitions Heatmap" }, { id: "stances", label: "Regulatory Positions" }].map(v => (
-            <button key={v.id} onClick={() => { setView(v.id); setHoveredAgency(null); setLockedAgency(null); setLockedConcept(null); setHoveredConcept(null); setHoveredPosition(null); setLockedPosition(null); setCellTooltip(null); }}
+            <button key={v.id} onClick={() => handleViewSwitch(v.id)}
               style={{
-                padding: "9px 20px", fontSize: 13, fontWeight: view === v.id ? 700 : 500, fontFamily: "inherit",
+                padding: "9px 22px", fontSize: 12.5, fontWeight: view === v.id ? 700 : 500,
+                fontFamily: "'Source Sans Pro',sans-serif",
+                letterSpacing: view === v.id ? "0.02em" : 0,
                 background: view === v.id ? PALETTE.surface : "transparent",
-                color: view === v.id ? PALETTE.dukeNavy : "rgba(255,255,255,0.6)",
+                color: view === v.id ? PALETTE.dukeNavy : "rgba(255,255,255,0.62)",
                 border: "none",
-                borderRadius: view === v.id ? "6px 6px 0 0" : 0,
+                borderRadius: view === v.id ? "5px 5px 0 0" : 0,
                 cursor: "pointer", transition: "all 0.2s",
               }}>
               {v.label}
@@ -783,15 +1002,18 @@ export default function RWEHarmonizationDashboard() {
       </div>
 
       {/* ── Content ──────────────────────────── */}
-      <div style={{ display: "flex", minHeight: 500, flex: 1 }}>
-        <div ref={containerRef} style={{ flex: 1, padding: "20px 24px", minWidth: 0 }}>
+      <div id="rwe-main-content" style={{ display: "flex", flexWrap: (view === "definitions" && isNarrow) ? "wrap" : "nowrap", minHeight: 500, flex: 1, position: "relative" }}>
+
+        {/* ── Main visualization area ── */}
+        <div ref={containerRef} style={{ flex: (view === "definitions" && isNarrow) ? "1 1 100%" : "1 1 0%", padding: view === "definitions" ? "20px 16px 20px 24px" : "20px 24px", minWidth: 0, overflow: "hidden" }}>
+          <div key={viewTransitionKey} style={{ animation: "fadeSlideIn 0.3s ease-out" }}>
           {view === "definitions" ? (
             <div>
-              <div style={{ display: "flex", gap: 16, marginBottom: 14, flexWrap: "wrap" }}>
+              <div style={{ display: "inline-flex", gap: 16, marginBottom: 14, flexWrap: "wrap", padding: "6px 12px", background: PALETTE.surface, border: `1px solid ${PALETTE.borderLight}`, borderRadius: 4 }}>
                 {Object.entries(STATUS_CONFIG).map(([key, cfg]) => (
                   <div key={key} style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                    <div style={{ width: 12, height: 12, borderRadius: 3, background: cfg.bg, opacity: key === "undetermined" ? 0.3 : 0.8 }} />
-                    <span style={{ fontSize: 11.5, color: PALETTE.textSecondary }}>{cfg.label}</span>
+                    <div style={{ width: 12, height: 12, borderRadius: 2, background: cfg.bg, opacity: key === "undetermined" ? 0.35 : 0.85 }} />
+                    <span style={{ fontSize: 11, fontWeight: 600, color: PALETTE.textSecondary, textTransform: "uppercase", letterSpacing: "0.05em" }}>{cfg.label}</span>
                   </div>
                 ))}
               </div>
@@ -807,30 +1029,32 @@ export default function RWEHarmonizationDashboard() {
                 onCellHover={setCellTooltip}
                 onCellLeave={() => setCellTooltip(null)}
               />
-              <p style={{ marginTop: 14, fontSize: 11.5, color: PALETTE.textMuted, lineHeight: 1.6, maxWidth: 640 }}>
+              <p style={{ marginTop: 14, fontSize: 11.5, color: PALETTE.textMuted, lineHeight: 1.6, maxWidth: 640, fontFamily: "'Source Sans Pro',sans-serif" }}>
                 Click any <strong>agency row</strong> to pin its definition profile, or click a <strong>column header</strong> to see cross-agency convergence for that concept. Hover over individual cells for excerpted definitions. Gaps (—) highlight upstream barriers to harmonization.
               </p>
             </div>
           ) : (
             <div>
               <div style={{ display: "flex", gap: 4, marginBottom: 14, flexWrap: "wrap" }}>
-                {STANCE_DIMENSIONS.map(d => {
-                  const active = d.id === selectedDimension;
+                {stanceDimensions.map(d => {
+                  const active = d.id === effectiveDimension;
                   return (
                     <button key={d.id} onClick={() => { setSelectedDimension(d.id); setHoveredAgency(null); setLockedAgency(null); setLockedConcept(null); setLockedPosition(null); setHoveredPosition(null); }}
                       style={{
-                        padding: "6px 14px", fontSize: 12.5, fontWeight: active ? 700 : 400, fontFamily: "inherit",
-                        background: active ? PALETTE.teal0 : PALETTE.surface,
-                        color: active ? PALETTE.teal6 : PALETTE.textMuted,
-                        border: `1px solid ${active ? PALETTE.teal2 : PALETTE.borderLight}`,
-                        borderRadius: 5, cursor: "pointer",
+                        padding: "6px 14px", fontSize: 12, fontWeight: active ? 700 : 400,
+                        fontFamily: "'Source Sans Pro',sans-serif",
+                        letterSpacing: active ? "0.02em" : 0,
+                        background: active ? PALETTE.skyBlue : PALETTE.surface,
+                        color: active ? PALETTE.dukeNavy : PALETTE.textMuted,
+                        border: `1px solid ${active ? PALETTE.dukeBlue : PALETTE.borderLight}`,
+                        borderRadius: 4, cursor: "pointer",
                       }}>
                       {d.label}
                     </button>
                   );
                 })}
               </div>
-              <svg width={chartW - 200} height={chartH} style={{ overflow: "visible" }}
+              <svg width={sankeyW} height={chartH} style={{ overflow: "visible" }}
                 onClick={(e) => { if (e.target === e.currentTarget) { setLockedAgency(null); setLockedConcept(null); setLockedPosition(null); } }}>
                 {layout.links.map((l, i) => {
                   const hl = (activeAgency && l.agencyId === activeAgency) || (activePosition !== null && l.posIndex === activePosition);
@@ -841,9 +1065,14 @@ export default function RWEHarmonizationDashboard() {
                   const isLocked = lockedAgency === n.id;
                   return (
                     <g key={n.id}
+                      role="button"
+                      tabIndex={0}
+                      aria-label={`Agency: ${n.label}`}
+                      className="rwe-focus-visible"
                       onMouseEnter={() => { if (!lockedAgency) setHoveredAgency(n.id); }}
                       onMouseLeave={() => { if (!lockedAgency) setHoveredAgency(null); }}
                       onClick={(e) => { e.stopPropagation(); handleLockAgency(n.id); }}
+                      onKeyDown={handleKeyActivate((e) => { e.stopPropagation(); handleLockAgency(n.id); })}
                       style={{ cursor: "pointer" }}>
                       <rect x={n.x} y={n.y} width={n.w} height={n.h} rx={2} fill={REGION_COLORS[n.region]} opacity={hl ? 0.85 : 0.15} style={{ transition: "opacity 0.2s" }} />
                       {isLocked && <rect x={n.x - 2} y={n.y - 2} width={n.w + 4} height={n.h + 4} rx={3} fill="none" stroke={REGION_COLORS[n.region]} strokeWidth={2} opacity={0.6} />}
@@ -856,9 +1085,14 @@ export default function RWEHarmonizationDashboard() {
                   const isPosLocked = lockedPosition === n.posIndex;
                   return (
                     <g key={n.id}
+                      role="button"
+                      tabIndex={0}
+                      aria-label={`Position: ${n.label}`}
+                      className="rwe-focus-visible"
                       onMouseEnter={() => { if (lockedPosition === null) setHoveredPosition(n.posIndex); }}
                       onMouseLeave={() => { if (lockedPosition === null) setHoveredPosition(null); }}
                       onClick={(e) => { e.stopPropagation(); handleLockPosition(n.posIndex); }}
+                      onKeyDown={handleKeyActivate((e) => { e.stopPropagation(); handleLockPosition(n.posIndex); })}
                       style={{ cursor: "pointer" }}>
                       <rect x={n.x} y={n.y} width={n.w} height={n.h} rx={2} fill={MATURITY_COLORS[n.maturity]} opacity={hl ? 0.75 : 0.12} style={{ transition: "opacity 0.2s" }} />
                       {isPosLocked && <rect x={n.x - 2} y={n.y - 2} width={n.w + 4} height={n.h + 4} rx={3} fill="none" stroke={MATURITY_COLORS[n.maturity]} strokeWidth={2} opacity={0.7} />}
@@ -873,125 +1107,266 @@ export default function RWEHarmonizationDashboard() {
               </svg>
             </div>
           )}
+          </div>
         </div>
 
-        {/* ── Side Panel ─────────────────────── */}
-        <div style={{ width: 280, borderLeft: `1px solid ${PALETTE.border}`, padding: "20px 16px", background: PALETTE.surface, overflowY: "auto", maxHeight: "calc(100vh - 140px)" }}>
-          {activeAgency ? (
-            <div>
-              {lockedAgency && (
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8, padding: "4px 8px", background: PALETTE.surfaceMuted, borderRadius: 5, border: `1px solid ${PALETTE.borderLight}` }}>
-                  <span style={{ fontSize: 10, color: PALETTE.textMuted }}>📌 Pinned — click agency or background to unpin</span>
-                </div>
-              )}
-              <AgencyCrosscut agencyId={activeAgency} />
-            </div>
-          ) : activeConcept ? (
-            <div>
-              {lockedConcept && (
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8, padding: "4px 8px", background: PALETTE.surfaceMuted, borderRadius: 5, border: `1px solid ${PALETTE.borderLight}` }}>
-                  <span style={{ fontSize: 10, color: PALETTE.textMuted }}>📌 Pinned — click column header to unpin</span>
-                </div>
-              )}
-              <ConceptCrosscut conceptId={activeConcept} />
-            </div>
-          ) : (view === "stances" && activePosition !== null) ? (
-            <div>
-              {lockedPosition !== null && (
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8, padding: "4px 8px", background: PALETTE.surfaceMuted, borderRadius: 5, border: `1px solid ${PALETTE.borderLight}` }}>
-                  <span style={{ fontSize: 10, color: PALETTE.textMuted }}>📌 Pinned — click cluster or background to unpin</span>
-                </div>
-              )}
-              <PositionCrosscut dimension={dimension} positionIndex={activePosition} />
-            </div>
-          ) : (
-            <div>
-              <div style={{ background: PALETTE.surfaceMuted, border: `1px solid ${PALETTE.borderLight}`, borderRadius: 8, padding: 14, marginBottom: 16 }}>
-                <div style={{ fontSize: 12, color: PALETTE.textMuted, lineHeight: 1.55 }}>
-                  {view === "definitions"
-                    ? <><strong>Click</strong> an agency row to pin its profile, or <strong>click</strong> a column header to see cross-agency convergence for that concept.</>
-                    : <><strong>Click</strong> an agency on the left to pin its profile, or <strong>click</strong> a cluster on the right to see convergence metrics and member agencies.</>
-                  }
+        {/* ── Right column: Map + info for definitions, Sidebar for stances ── */}
+        {view === "definitions" ? (
+          /* Definitions view: Map + info panel below it (no separate sidebar) */
+          !isMobile && (
+            <div style={{
+              flex: isNarrow ? "1 1 100%" : "0 0 66%",
+              minWidth: isNarrow ? undefined : 320,
+              maxWidth: isNarrow ? undefined : 800,
+              paddingTop: 20,
+              paddingLeft: isNarrow ? 24 : 8,
+              paddingRight: isNarrow ? 24 : 0,
+              overflowY: isNarrow ? "visible" : "auto",
+              maxHeight: isNarrow ? undefined : "calc(100vh - 140px)",
+            }}
+              aria-live="polite">
+              <div style={isNarrow ? { display: "flex", gap: 24, alignItems: "flex-start" } : undefined}>
+              <div style={isNarrow ? { flex: "0 0 50%", maxWidth: "50%" } : undefined}>
+              <WorldMap
+                agencies={agencies}
+                regionColors={REGION_COLORS}
+                hoveredAgency={hoveredAgency}
+                lockedAgency={lockedAgency}
+                onHoverAgency={setHoveredAgency}
+                onLockAgency={handleLockAgency}
+                palette={PALETTE}
+              />
+              </div>
+
+              {/* ── Info panel ── */}
+              <div style={isNarrow ? { flex: 1, minWidth: 0, padding: 0 } : { marginTop: 16, padding: "0 4px" }}>
+                {activeAgency ? (
+                  <div>
+                    {lockedAgency && (
+                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8, padding: "4px 10px", background: PALETTE.skyBlueLight, borderRadius: 4, border: `1px solid ${PALETTE.dukeBlue}` }}>
+                        <span style={{ fontSize: 10, color: PALETTE.dukeBlue, fontWeight: 600 }}>Pinned — click agency or background to unpin</span>
+                      </div>
+                    )}
+                    <AgencyCrosscut agencyId={activeAgency} />
+                  </div>
+                ) : activeConcept ? (
+                  <div>
+                    {lockedConcept && (
+                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8, padding: "4px 10px", background: PALETTE.skyBlueLight, borderRadius: 4, border: `1px solid ${PALETTE.dukeBlue}` }}>
+                        <span style={{ fontSize: 10, color: PALETTE.dukeBlue, fontWeight: 600 }}>Pinned — click column header to unpin</span>
+                      </div>
+                    )}
+                    <ConceptCrosscut conceptId={activeConcept} />
+                  </div>
+                ) : (
+                  <div>
+                    <div style={{ background: PALETTE.skyBlue, border: `1px solid ${PALETTE.dukeBlue}`, borderLeft: `4px solid ${PALETTE.dukeBlue}`, borderRadius: 4, padding: "10px 14px", marginBottom: 16 }}>
+                      <div style={{ fontSize: 11.5, color: PALETTE.textPrimary, lineHeight: 1.6, fontWeight: 400 }}>
+                        <strong>Click</strong> an agency row to pin its profile, or <strong>click</strong> a column header to see cross-agency convergence for that concept.
+                      </div>
+                    </div>
+                    <div style={{ marginBottom: 16 }}>
+                      <div style={{ background: PALETTE.dukeNavy, padding: "6px 10px", borderRadius: "4px 4px 0 0" }}>
+                        <span style={{ fontSize: 9.5, fontWeight: 700, letterSpacing: "0.14em", textTransform: "uppercase", color: "#FFFFFF" }}>Why This Matters</span>
+                      </div>
+                      <div style={{ padding: "12px 14px", background: PALETTE.surface, border: `1px solid ${PALETTE.borderLight}`, borderTop: "none", borderRadius: "0 0 4px 4px", lineHeight: 1.6 }}>
+                        <div style={{ fontSize: 11.5, color: PALETTE.textSecondary, marginBottom: 10 }}>
+                          Real-world evidence is increasingly central to regulatory decision-making — from post-market safety surveillance to supporting label expansions and accelerating access to therapies. Yet the value of RWE depends on shared understanding of foundational concepts like data quality, relevance, and reliability.
+                        </div>
+                        <div style={{ fontSize: 11.5, color: PALETTE.textSecondary, marginBottom: 10 }}>
+                          When regulators define these terms differently — or leave them undefined — it creates friction for sponsors designing multi-regional studies and for patients who stand to benefit from timely evidence generation.
+                        </div>
+                        <div style={{ fontSize: 11.5, color: PALETTE.textSecondary }}>
+                          This dashboard maps those definitional gaps and alignments across 12 agencies, providing a starting point for identifying where harmonization efforts can have the greatest impact.
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                )}
+                <div style={{ padding: "10px 12px", background: PALETTE.skyBlue, border: `1px solid ${PALETTE.dukeBlue}`, borderRadius: 4, fontSize: 10.5, color: PALETTE.textPrimary, lineHeight: 1.55, marginTop: 12 }}>
+                  <strong style={{ color: PALETTE.dukeNavy }}>Data source:</strong> Duke-Margolis Institute for Health Policy, International Harmonization of Real-World Evidence Standards Dashboard. Definitions coded from published regulatory guidance as of Oct 2025.
                 </div>
               </div>
-              {view === "definitions" && (
-                <div style={{ padding: "12px 14px", background: PALETTE.surface, border: `1px solid ${PALETTE.borderLight}`, borderRadius: 8, marginBottom: 16, lineHeight: 1.6 }}>
-                  <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: "0.1em", textTransform: "uppercase", color: PALETTE.dukeNavy, marginBottom: 8 }}>Why This Matters</div>
-                  <div style={{ fontSize: 11.5, color: PALETTE.textSecondary, marginBottom: 10 }}>
-                    Real-world evidence is increasingly central to regulatory decision-making — from post-market safety surveillance to supporting label expansions and accelerating access to therapies. Yet the value of RWE depends on shared understanding of foundational concepts like data quality, relevance, and reliability.
+              </div>{/* close flex row / map wrapper */}
+            </div>
+          )
+        ) : (
+          /* Stances view: keep the traditional sidebar */
+          <>
+            {/* Mobile sidebar backdrop */}
+            {isMobile && sidebarOpen && (
+              <div
+                onClick={() => setSidebarOpen(false)}
+                style={{
+                  position: "fixed", top: 0, left: 0, right: 0, bottom: 0,
+                  background: "rgba(0,0,0,0.3)", zIndex: 999,
+                }}
+              />
+            )}
+
+            <div
+              className={isMobile ? `rwe-sidebar-overlay ${sidebarOpen ? "rwe-sidebar-open" : "rwe-sidebar-closed"}` : ""}
+              aria-live="polite"
+              style={{
+                flex: isMobile ? undefined : "0 0 280px",
+                borderLeft: `1px solid ${PALETTE.border}`,
+                padding: "20px 16px",
+                background: PALETTE.surface,
+                overflowY: "auto",
+                maxHeight: isMobile ? "100vh" : "calc(100vh - 140px)",
+                ...(isMobile && !sidebarOpen ? { pointerEvents: "none" } : {}),
+              }}
+            >
+              {isMobile && (
+                <button
+                  onClick={() => setSidebarOpen(false)}
+                  aria-label="Close info panel"
+                  style={{
+                    position: "absolute", top: 10, right: 10,
+                    background: PALETTE.surfaceMuted, border: `1px solid ${PALETTE.border}`,
+                    borderRadius: 4, padding: "4px 10px", cursor: "pointer",
+                    fontSize: 14, fontWeight: 700, color: PALETTE.textSecondary,
+                  }}
+                >
+                  X
+                </button>
+              )}
+
+              {activeAgency ? (
+                <div>
+                  {lockedAgency && (
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8, padding: "4px 10px", background: PALETTE.skyBlueLight, borderRadius: 4, border: `1px solid ${PALETTE.dukeBlue}` }}>
+                      <span style={{ fontSize: 10, color: PALETTE.dukeBlue, fontWeight: 600 }}>Pinned — click agency or background to unpin</span>
+                    </div>
+                  )}
+                  <AgencyCrosscut agencyId={activeAgency} />
+                </div>
+              ) : activePosition !== null ? (
+                <div>
+                  {lockedPosition !== null && (
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8, padding: "4px 10px", background: PALETTE.skyBlueLight, borderRadius: 4, border: `1px solid ${PALETTE.dukeBlue}` }}>
+                      <span style={{ fontSize: 10, color: PALETTE.dukeBlue, fontWeight: 600 }}>Pinned — click cluster or background to unpin</span>
+                    </div>
+                  )}
+                  <PositionCrosscut dimension={dimension} positionIndex={activePosition} />
+                </div>
+              ) : (
+                <div>
+                  <div style={{ background: PALETTE.skyBlue, border: `1px solid ${PALETTE.dukeBlue}`, borderLeft: `4px solid ${PALETTE.dukeBlue}`, borderRadius: 4, padding: "10px 14px", marginBottom: 16 }}>
+                    <div style={{ fontSize: 11.5, color: PALETTE.textPrimary, lineHeight: 1.6, fontWeight: 400 }}>
+                      <strong>Click</strong> an agency on the left to pin its profile, or <strong>click</strong> a cluster on the right to see convergence metrics and member agencies.
+                    </div>
                   </div>
-                  <div style={{ fontSize: 11.5, color: PALETTE.textSecondary, marginBottom: 10 }}>
-                    When regulators define these terms differently — or leave them undefined — it creates friction for sponsors designing multi-regional studies and for patients who stand to benefit from timely evidence generation.
-                  </div>
-                  <div style={{ fontSize: 11.5, color: PALETTE.textSecondary }}>
-                    This dashboard maps those definitional gaps and alignments across 12 agencies, providing a starting point for identifying where harmonization efforts can have the greatest impact.
+                  <div style={{ marginBottom: 16 }}>
+                    <div style={{ background: PALETTE.dukeNavy, padding: "6px 10px", borderRadius: "4px 4px 0 0" }}>
+                      <span style={{ fontSize: 9.5, fontWeight: 700, letterSpacing: "0.14em", textTransform: "uppercase", color: "#FFFFFF" }}>About This View</span>
+                    </div>
+                    <div style={{ padding: "12px 14px", background: PALETTE.surface, border: `1px solid ${PALETTE.borderLight}`, borderTop: "none", borderRadius: "0 0 4px 4px", lineHeight: 1.6 }}>
+                      <div style={{ fontSize: 11.5, color: PALETTE.textSecondary, marginBottom: 10 }}>
+                        Beyond definitions, regulators also differ in how they operationalize RWE — from requirements around external comparators and causal inference methods to expectations for study transparency and data quality frameworks.
+                      </div>
+                      <div style={{ fontSize: 11.5, color: PALETTE.textSecondary, marginBottom: 10 }}>
+                        This Sankey diagram visualizes how agencies cluster around regulatory positions for each dimension. Agencies on the left flow to their assessed position on the right, colored by maturity level.
+                      </div>
+                      <div style={{ fontSize: 11.5, color: PALETTE.textSecondary, marginBottom: 10, padding: "8px 10px", background: PALETTE.amberLight, borderLeft: `3px solid ${PALETTE.amber}`, borderRadius: 3 }}>
+                        <strong style={{ color: PALETTE.amber }}>Note:</strong> The five regulatory dimensions and agency-to-position mappings shown here are <strong>illustrative placeholders</strong> — directionally plausible but not rigorously coded from the Duke-Margolis tracker. They are intended to demonstrate the visualization framework and interaction model for future data integration.
+                      </div>
+                      <div style={{ fontSize: 11.5, color: PALETTE.textSecondary }}>
+                        A production version would replace these with verified codings from the tracker or a custom taxonomy developed through domain expert consensus.
+                      </div>
+                    </div>
                   </div>
                 </div>
               )}
-              {view === "stances" && (
-                <div style={{ padding: "12px 14px", background: PALETTE.surface, border: `1px solid ${PALETTE.borderLight}`, borderRadius: 8, marginBottom: 16, lineHeight: 1.6 }}>
-                  <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: "0.1em", textTransform: "uppercase", color: PALETTE.dukeNavy, marginBottom: 8 }}>About This View</div>
-                  <div style={{ fontSize: 11.5, color: PALETTE.textSecondary, marginBottom: 10 }}>
-                    Beyond definitions, regulators also differ in how they operationalize RWE — from requirements around external comparators and causal inference methods to expectations for study transparency and data quality frameworks.
+              <div style={{ marginBottom: 18 }}>
+                <div style={{ fontSize: 9.5, fontWeight: 700, color: PALETTE.dukeNavy, letterSpacing: "0.14em", textTransform: "uppercase", marginBottom: 8, borderBottom: `2px solid ${PALETTE.dukeNavy}`, paddingBottom: 4 }}>Regions</div>
+                {Object.entries(REGION_COLORS).map(([r, c]) => (
+                  <div key={r} style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 5 }}>
+                    <div style={{ width: 10, height: 10, borderRadius: 2, background: c }} />
+                    <span style={{ fontSize: 11.5, color: PALETTE.textSecondary }}>{r}</span>
                   </div>
-                  <div style={{ fontSize: 11.5, color: PALETTE.textSecondary, marginBottom: 10 }}>
-                    This Sankey diagram visualizes how agencies cluster around regulatory positions for each dimension. Agencies on the left flow to their assessed position on the right, colored by maturity level.
-                  </div>
-                  <div style={{ fontSize: 11.5, color: PALETTE.textSecondary, marginBottom: 10, padding: "8px 10px", background: PALETTE.surfaceMuted, borderRadius: 5, border: `1px solid ${PALETTE.borderLight}` }}>
-                    <strong style={{ color: PALETTE.red }}>Note:</strong> The five regulatory dimensions and agency-to-position mappings shown here are <strong>illustrative placeholders</strong> — directionally plausible but not rigorously coded from the Duke-Margolis tracker. They are intended to demonstrate the visualization framework and interaction model for future data integration.
-                  </div>
-                  <div style={{ fontSize: 11.5, color: PALETTE.textSecondary }}>
-                    A production version would replace these with verified codings from the tracker or a custom taxonomy developed through domain expert consensus.
-                  </div>
-                </div>
-              )}
-            </div>
-          )}
-          <div style={{ marginBottom: 18 }}>
-            <div style={{ fontSize: 10, fontWeight: 700, color: PALETTE.textMuted, letterSpacing: "0.1em", textTransform: "uppercase", marginBottom: 8 }}>Regions</div>
-            {Object.entries(REGION_COLORS).map(([r, c]) => (
-              <div key={r} style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 5 }}>
-                <div style={{ width: 10, height: 10, borderRadius: 3, background: c }} />
-                <span style={{ fontSize: 12, color: PALETTE.textSecondary }}>{r}</span>
+                ))}
               </div>
-            ))}
-            <div style={{ fontSize: 10, color: PALETTE.textFaint, marginTop: 6, lineHeight: 1.45 }}>
-              Colors represent the geographic region of each regulatory agency. Flows in the Sankey diagram and cells in the heatmap are colored by region.
-            </div>
-          </div>
-          {view === "stances" && (
-            <div style={{ marginBottom: 18 }}>
-              <div style={{ fontSize: 10, fontWeight: 700, color: PALETTE.textMuted, letterSpacing: "0.1em", textTransform: "uppercase", marginBottom: 8 }}>Maturity Spectrum</div>
-              {[{ l: "Most developed", c: MATURITY_COLORS[0] }, { l: "Intermediate", c: MATURITY_COLORS[1] }, { l: "Least developed", c: MATURITY_COLORS[2] }].map(x => (
-                <div key={x.l} style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 5 }}>
-                  <div style={{ width: 10, height: 10, borderRadius: 3, background: x.c }} />
-                  <span style={{ fontSize: 12, color: PALETTE.textSecondary }}>{x.l}</span>
-                </div>
-              ))}
-              <div style={{ fontSize: 10, color: PALETTE.textFaint, marginTop: 6, lineHeight: 1.45 }}>
-                Clusters on the right represent regulatory positions ranked by maturity — from detailed, published frameworks to no formal guidance. Agencies flow from left to their corresponding position.
+              <div style={{ marginBottom: 18 }}>
+                <div style={{ fontSize: 9.5, fontWeight: 700, color: PALETTE.dukeNavy, letterSpacing: "0.14em", textTransform: "uppercase", marginBottom: 8, borderBottom: `2px solid ${PALETTE.dukeNavy}`, paddingBottom: 4 }}>Maturity Spectrum</div>
+                {[{ l: "Most developed", c: MATURITY_COLORS[0] }, { l: "Intermediate", c: MATURITY_COLORS[1] }, { l: "Least developed", c: MATURITY_COLORS[2] }].map(x => (
+                  <div key={x.l} style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 5 }}>
+                    <div style={{ width: 10, height: 10, borderRadius: 2, background: x.c }} />
+                    <span style={{ fontSize: 11.5, color: PALETTE.textSecondary }}>{x.l}</span>
+                  </div>
+                ))}
+              </div>
+              <div style={{ padding: "10px 12px", background: PALETTE.skyBlue, border: `1px solid ${PALETTE.dukeBlue}`, borderRadius: 4, fontSize: 10.5, color: PALETTE.textPrimary, lineHeight: 1.55 }}>
+                <strong style={{ color: PALETTE.dukeNavy }}>Data source:</strong> Duke-Margolis Institute for Health Policy, International Harmonization of Real-World Evidence Standards Dashboard. Definitions coded from published regulatory guidance as of Oct 2025.
               </div>
             </div>
-          )}
-          <div style={{ padding: "10px 12px", background: PALETTE.surfaceMuted, border: `1px solid ${PALETTE.borderLight}`, borderRadius: 6, fontSize: 10.5, color: PALETTE.textMuted, lineHeight: 1.55 }}>
-            <strong>Data source:</strong> Duke-Margolis Institute for Health Policy, International Harmonization of Real-World Evidence Standards Dashboard. Definitions coded from published regulatory guidance as of Oct 2025.
-          </div>
-        </div>
+          </>
+        )}
       </div>
 
-      {/* ── Footer ───────────────────────────── */}
+      {/* ── Floating "Info" button on mobile ── */}
+      {isMobile && !sidebarOpen && (
+        <button
+          onClick={() => setSidebarOpen(true)}
+          aria-label="Open info panel"
+          style={{
+            position: "fixed",
+            bottom: 20,
+            right: 20,
+            zIndex: 998,
+            background: PALETTE.dukeNavy,
+            color: "#fff",
+            border: "none",
+            borderRadius: 28,
+            padding: "12px 20px",
+            fontSize: 13,
+            fontWeight: 700,
+            fontFamily: "'Source Sans Pro',sans-serif",
+            boxShadow: "0 4px 14px rgba(0,51,102,0.3)",
+            cursor: "pointer",
+            letterSpacing: "0.04em",
+          }}
+        >
+          Info
+        </button>
+      )}
+
+      {/* ── Footer — three-zone per brand guidelines ── */}
       <div style={{
-        background: PALETTE.dukeNavy, padding: "16px 28px",
+        background: PALETTE.dukeNavy,
+        borderTop: `3px solid ${PALETTE.teal4}`,
+        padding: "12px 28px",
         display: "flex", justifyContent: "space-between", alignItems: "center",
         flexWrap: "wrap", gap: 8,
       }}>
-        <div style={{ fontSize: 11.5, color: "rgba(255,255,255,0.7)", lineHeight: 1.5 }}>
-          Created by <span style={{ fontWeight: 700, color: "#ffffff" }}>John D. Diaz-Decaro, PhD, MS</span> · <span style={{ fontWeight: 600, color: "rgba(255,255,255,0.85)" }}>Black Swan Causal Labs, LLC</span>
+        {/* Left zone: document title short form */}
+        <div style={{ fontSize: 11, color: "rgba(255,255,255,0.70)", lineHeight: 1.5 }}>
+          <span style={{ fontWeight: 700, color: "#FFFFFF" }}>RWE Harmonization Explorer</span>
+          <span style={{ color: "rgba(255,255,255,0.45)", marginLeft: 10 }}>·</span>
+          <span style={{ marginLeft: 10, fontStyle: "italic", color: "rgba(255,255,255,0.55)" }}>
+            Created by John D. Diaz-Decaro, PhD, MS · Black Swan Causal Labs, LLC
+          </span>
         </div>
-        <div style={{ fontSize: 10, color: "rgba(255,255,255,0.4)" }}>
-          Data: Duke-Margolis Institute for Health Policy, Intl. Harmonization of RWE Standards Dashboard · Definitions as of Oct 2025
+
+        {/* Right zone: URL + teal page-number badge (brand spec) */}
+        <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
+          <span style={{ fontSize: 10.5, color: "rgba(255,255,255,0.55)", letterSpacing: "0.04em" }}>
+            healthpolicy.duke.edu
+          </span>
+          {/* Teal square page-number badge per brand guidelines */}
+          <div style={{
+            background: PALETTE.teal4,
+            color: "#FFFFFF",
+            fontSize: 10, fontWeight: 700,
+            padding: "4px 9px",
+            borderRadius: 3,
+            letterSpacing: "0.06em",
+          }}>
+            Oct 2025
+          </div>
         </div>
       </div>
     </div>
+    </DataContext.Provider>
   );
 }
